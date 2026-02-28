@@ -228,7 +228,7 @@ export function HomeScreen() {
               <div>{friend.checkIn ? `At ${friend.checkIn.barName}` : "Not out"}</div>
             </div>
             <div className="row">
-              <Link to={`/messages/${friend.userId}`}>
+              <Link to={`/friends/${friend.userId}`}>
                 <button className="secondary">Message</button>
               </Link>
               {selfCheckIn ? <button onClick={() => sendNudge(friend.userId)}>Nudge</button> : null}

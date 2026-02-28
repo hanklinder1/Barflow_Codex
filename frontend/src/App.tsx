@@ -4,7 +4,6 @@ import { AuthScreen } from "./screens/AuthScreen";
 import { OnboardingScreen } from "./screens/OnboardingScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { FriendsScreen } from "./screens/FriendsScreen";
-import { MessagesScreen } from "./screens/MessagesScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import Logo from "./components/Logo";
 
@@ -20,7 +19,6 @@ function Shell({ children }: { children: React.ReactNode }) {
           Home
         </NavLink>
         <NavLink to="/friends">Friends</NavLink>
-        <NavLink to="/messages">Messages</NavLink>
         <NavLink to="/settings">Settings</NavLink>
       </nav>
     </div>
@@ -65,18 +63,19 @@ export default function App() {
         }
       />
       <Route
-        path="/messages"
+        path="/friends/:friendId"
         element={
           <ProtectedRoute>
-            <MessagesScreen />
+            <FriendsScreen />
           </ProtectedRoute>
         }
       />
+      <Route path="/messages" element={<Navigate to="/friends" replace />} />
       <Route
         path="/messages/:friendId"
         element={
           <ProtectedRoute>
-            <MessagesScreen />
+            <FriendsScreen />
           </ProtectedRoute>
         }
       />

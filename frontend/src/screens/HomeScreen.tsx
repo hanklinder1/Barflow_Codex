@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import Map, { Marker, NavigationControl, Popup } from "react-map-gl/mapbox";
+import Map, { Marker, Popup } from "react-map-gl/mapbox";
 import { api } from "../api";
 import { connectSocket } from "../socket";
-import type { Bar, Friend, Nudge } from "../types";
+import type { Bar } from "../types";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
 
@@ -11,34 +11,24 @@ type LocationState = "detecting" | "enabled" | "disabled";
 
 export function HomeScreen() {
   const [bars, setBars] = useState<Bar[]>([]);
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [nudges, setNudges] = useState<Nudge[]>([]);
   const [selfCheckIn, setSelfCheckIn] = useState<null | { barId: string; barName: string }>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedBarId, setSelectedBarId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<LocationState>("detecting");
 
-  const checkedInFriends = useMemo(() => friends.filter((f) => f.checkIn), [friends]);
   const selectedBar = useMemo(() => bars.find((bar) => bar.id === selectedBarId) ?? null, [bars, selectedBarId]);
 
   async function loadAll() {
     setError(null);
     try {
-      const [overview, friendData, nudgeData] = await Promise.all([
-        api<{ bars: Bar[]; selfCheckIn: { barId: string; barName: string } | null }>("/map/overview"),
-        api<Friend[]>("/friends"),
-        api<Nudge[]>("/nudges")
-      ]);
+      const overview = await api<{ bars: Bar[]; selfCheckIn: { barId: string; barName: string } | null }>(
+        "/map/overview"
+      );
 
       setBars(overview.bars);
-      setFriends(friendData);
-      setNudges(nudgeData);
       setSelfCheckIn(overview.selfCheckIn);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -67,7 +57,19 @@ export function HomeScreen() {
     }
 
     navigator.geolocation.getCurrentPosition(
-      () => setLocationState("enabled"),
+      async (position) => {
+        setLocationState("enabled");
+        try {
+          await api("/checkins/auto", "POST", {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          });
+          loadAll();
+        } catch {
+          // Ignore single-shot auto-detect failures on initial page load.
+        }
+      },
       () => setLocationState("disabled")
     );
   }, []);
@@ -96,7 +98,8 @@ export function HomeScreen() {
         setLocationState("enabled");
         await api("/checkins/auto", "POST", {
           latitude: position.coords.latitude,
-          longitude: position.coords.longitude
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
         });
         loadAll();
       },
@@ -105,15 +108,6 @@ export function HomeScreen() {
         setError("Location permission denied");
       }
     );
-  }
-
-  async function dismissNudge(nudgeId: string) {
-    await api(`/nudges/${nudgeId}/dismiss`, "POST");
-    setNudges((current) => current.filter((n) => n.id !== nudgeId));
-  }
-
-  async function sendNudge(friendUserId: string) {
-    await api("/nudges", "POST", { recipientId: friendUserId });
   }
 
   const locationSubtext =
@@ -138,18 +132,6 @@ export function HomeScreen() {
         </Link>
       </section>
 
-      <section className="panel stack hero-panel">
-        <h1 className="title">Tonight in Clemson</h1>
-        <p className="small">{selfCheckIn ? `Checked in at ${selfCheckIn.barName}` : "You are currently not checked in"}</p>
-        <div className="row wrap">
-          <button onClick={autoCheckIn}>Auto Check-In</button>
-          <button className="secondary" onClick={checkOut}>
-            Check Out
-          </button>
-        </div>
-        {error ? <p className="error-text">{error}</p> : null}
-      </section>
-
       <section className="panel">
         <div className="map-wrap">
           {MAPBOX_TOKEN ? (
@@ -163,7 +145,6 @@ export function HomeScreen() {
               mapStyle="mapbox://styles/mapbox/light-v11"
               style={{ width: "100%", height: "100%" }}
             >
-              <NavigationControl position="top-right" />
               {bars.map((bar) => (
                 <Marker key={bar.id} latitude={bar.latitude} longitude={bar.longitude}>
                   <button
@@ -201,7 +182,16 @@ export function HomeScreen() {
       </section>
 
       <section className="panel stack">
-        <h2 className="section-title">Bars</h2>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h2 className="section-title">Bars</h2>
+          <div className="row">
+            <button onClick={autoCheckIn}>Auto Check-In</button>
+            <button className="secondary" onClick={checkOut}>
+              Check Out
+            </button>
+          </div>
+        </div>
+        {error ? <p className="error-text">{error}</p> : null}
         {bars.map((bar) => (
           <div className="list-item" key={bar.id}>
             <div>
@@ -211,49 +201,6 @@ export function HomeScreen() {
             <button onClick={() => manualCheckIn(bar.id)}>Check In</button>
           </div>
         ))}
-      </section>
-
-      <section className="panel stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 className="section-title">Friends Out ({checkedInFriends.length})</h2>
-          <Link to="/friends" className="small">
-            Manage friends
-          </Link>
-        </div>
-        {friends.map((friend) => (
-          <div className="list-item" key={friend.userId}>
-            <div>
-              <strong>{friend.displayName}</strong>
-              <div className="small">@{friend.username}</div>
-              <div>{friend.checkIn ? `At ${friend.checkIn.barName}` : "Not out"}</div>
-            </div>
-            <div className="row">
-              <Link to={`/friends/${friend.userId}`}>
-                <button className="secondary">Message</button>
-              </Link>
-              {selfCheckIn ? <button onClick={() => sendNudge(friend.userId)}>Nudge</button> : null}
-            </div>
-          </div>
-        ))}
-      </section>
-
-      <section className="panel stack">
-        <h2 className="section-title">Nudges {nudges.length > 0 ? `(${nudges.length})` : ""}</h2>
-        {nudges.map((nudge) => (
-          <div key={nudge.id} className="list-item">
-            <div>
-              <strong>{nudge.sender.displayName}</strong> wants you at <strong>{nudge.bar.name}</strong>
-              <div className="small">{new Date(nudge.createdAt).toLocaleTimeString()}</div>
-            </div>
-            <div className="row">
-              <button className="secondary" onClick={() => dismissNudge(nudge.id)}>
-                Dismiss
-              </button>
-              <button onClick={() => manualCheckIn(nudge.bar.id)}>See Bar</button>
-            </div>
-          </div>
-        ))}
-        {!loading && nudges.length === 0 ? <div className="small">No active nudges.</div> : null}
       </section>
     </div>
   );

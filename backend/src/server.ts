@@ -170,6 +170,57 @@ app.get("/bars", requireAuth, async (_req, res) => {
   );
 });
 
+app.get("/billing/plans", requireAuth, async (req: AuthedRequest, res) => {
+  const userId = req.auth!.userId;
+  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const currentTier = profile?.premium ? "PREMIUM" : "FREE";
+
+  return res.json({
+    currentTier,
+    plans: [
+      {
+        id: "FREE",
+        name: "Free",
+        monthlyPrice: 0,
+        features: ["Core check-ins", "Friends + messaging", "Map visibility"]
+      },
+      {
+        id: "PREMIUM",
+        name: "Premium",
+        monthlyPrice: 4.99,
+        features: ["Premium icon pack", "Priority nudge delivery", "Early feature access"]
+      },
+      {
+        id: "VIP",
+        name: "VIP",
+        monthlyPrice: 9.99,
+        features: ["VIP icon pack", "VIP profile flair", "Future concierge features"]
+      }
+    ]
+  });
+});
+
+app.post("/billing/checkout-session", requireAuth, async (req: AuthedRequest, res) => {
+  const schema = z.object({ planId: z.enum(["PREMIUM", "VIP"]) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const userId = req.auth!.userId;
+  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const currentTier = profile?.premium ? "PREMIUM" : "FREE";
+  if (currentTier === parsed.data.planId) {
+    return res.status(409).json({ error: "Plan already active" });
+  }
+
+  const sessionId = `stub_${parsed.data.planId.toLowerCase()}_${Date.now()}`;
+  return res.status(201).json({
+    sessionId,
+    status: "STUB_READY",
+    planId: parsed.data.planId,
+    checkoutUrl: `${config.clientOrigin}/settings?billing=${sessionId}`
+  });
+});
+
 app.get("/friends/search", requireAuth, async (req: AuthedRequest, res) => {
   const q = String(req.query.q ?? "").trim().toLowerCase();
   if (q.length < 2) return res.json([]);
@@ -413,12 +464,16 @@ app.post("/checkins/manual", requireAuth, async (req: AuthedRequest, res) => {
 });
 
 app.post("/checkins/auto", requireAuth, async (req: AuthedRequest, res) => {
-  const schema = z.object({ latitude: z.number(), longitude: z.number() });
+  const schema = z.object({ latitude: z.number(), longitude: z.number(), accuracy: z.number().optional() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const userId = req.auth!.userId;
-  const { latitude, longitude } = parsed.data;
+  const { latitude, longitude, accuracy } = parsed.data;
+
+  if (accuracy && accuracy > 90) {
+    return res.json({ status: "LOW_ACCURACY", checkIn: null });
+  }
 
   const distanceToCenter = haversineMeters(
     latitude,
@@ -451,6 +506,16 @@ app.post("/checkins/auto", requireAuth, async (req: AuthedRequest, res) => {
   }
 
   if (!nearest || nearestDistance > config.autoCheckInRadiusMeters) {
+    const existing = await prisma.checkIn.findUnique({ where: { userId } });
+    await prisma.checkIn.deleteMany({ where: { userId } });
+    if (existing) {
+      const friendIds = await getFriendIds(userId);
+      emitToUsers([...friendIds, userId], "checkin:update", {
+        userId,
+        action: "CHECKED_OUT",
+        at: new Date().toISOString()
+      });
+    }
     return res.json({ status: "NO_BAR_IN_RANGE", checkIn: null });
   }
 

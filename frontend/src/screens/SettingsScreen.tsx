@@ -17,7 +17,7 @@ type Plan = {
   id: PremiumTier;
   name: string;
   monthlyPrice: number;
-  perks: string[];
+  features: string[];
 };
 
 const avatarOptions: AvatarOption[] = [
@@ -38,9 +38,9 @@ const avatarOptions: AvatarOption[] = [
 ];
 
 const plans: Plan[] = [
-  { id: "FREE", name: "Free", monthlyPrice: 0, perks: ["Core check-ins", "Friends + messaging"] },
-  { id: "PREMIUM", name: "Premium", monthlyPrice: 4.99, perks: ["Premium icon set", "Priority nudge delivery"] },
-  { id: "VIP", name: "VIP", monthlyPrice: 9.99, perks: ["VIP icon set", "Future concierge features"] }
+  { id: "FREE", name: "Free", monthlyPrice: 0, features: ["Core check-ins", "Friends + messaging"] },
+  { id: "PREMIUM", name: "Premium", monthlyPrice: 4.99, features: ["Premium icon set", "Priority nudge delivery"] },
+  { id: "VIP", name: "VIP", monthlyPrice: 9.99, features: ["VIP icon set", "Future concierge features"] }
 ];
 
 const tierRank: Record<PremiumTier, number> = {
@@ -58,12 +58,21 @@ export function SettingsScreen() {
   const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
   const [avatar, setAvatar] = useState(profile?.avatar ?? "star");
   const [theme, setTheme] = useState<Theme>("dark");
+  const [planRows, setPlanRows] = useState<Plan[]>(plans);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [billingNotice, setBillingNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setTheme(getStoredTheme());
+  }, []);
+
+  useEffect(() => {
+    api<{ plans: Plan[] }>("/billing/plans")
+      .then((data) => {
+        setPlanRows(data.plans);
+      })
+      .catch(() => undefined);
   }, []);
 
   const selectedAvatar = useMemo(
@@ -94,8 +103,17 @@ export function SettingsScreen() {
     applyTheme(next);
   }
 
-  function onUpgradeClick(targetTier: PremiumTier) {
-    setBillingNotice(`Billing setup pending: ${targetTier} checkout coming soon.`);
+  async function onUpgradeClick(targetTier: PremiumTier) {
+    try {
+      const checkout = await api<{ checkoutUrl: string; sessionId: string; status: string }>(
+        "/billing/checkout-session",
+        "POST",
+        { planId: targetTier }
+      );
+      setBillingNotice(`Billing session ready (${checkout.sessionId}). Redirect URL prepared.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start checkout");
+    }
   }
 
   return (
@@ -187,12 +205,12 @@ export function SettingsScreen() {
             <span className="small">Payment integration staged</span>
           </div>
 
-          {plans.map((plan) => (
+          {planRows.map((plan) => (
             <div key={plan.id} className="plan-row">
               <div>
                 <strong>{plan.name}</strong>
                 <div className="small">{plan.monthlyPrice === 0 ? "$0/mo" : `$${plan.monthlyPrice}/mo`}</div>
-                <div className="small">{plan.perks.join(" • ")}</div>
+                <div className="small">{plan.features.join(" • ")}</div>
               </div>
               <button
                 type="button"

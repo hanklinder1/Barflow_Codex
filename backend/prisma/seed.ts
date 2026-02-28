@@ -50,7 +50,7 @@ const bars = [
   {
     id: "bar356",
     name: "356 Bar",
-    latitude: 34.68321778370416,
+    latitude: 34.68301778370416,
     longitude: -82.83740070964124,
     tagline: "Classic downtown bar energy.",
     vibeTags: "College,Social,Nightlife",

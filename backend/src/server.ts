@@ -3,7 +3,7 @@ import express from "express";
 import http from "http";
 import bcrypt from "bcrypt";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { config } from "./config.js";
 import { prisma } from "./prisma.js";
 import { AVATAR_OPTIONS } from "./constants.js";
@@ -136,7 +136,7 @@ app.post("/profiles", requireAuth, async (req: AuthedRequest, res) => {
 
     return res.status(201).json(profile);
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof PrismaClientKnownRequestError && err.code === "P2002") {
       return res.status(409).json({ error: "Username already taken" });
     }
     throw err;
@@ -247,7 +247,7 @@ app.post("/friends/requests/:id/respond", requireAuth, async (req: AuthedRequest
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const requestId = req.params.id;
+  const requestId = String(req.params.id);
   const userId = req.auth!.userId;
 
   const request = await prisma.friendRequest.findUnique({ where: { id: requestId } });
@@ -524,7 +524,7 @@ app.get("/messages/conversations", requireAuth, async (req: AuthedRequest, res) 
 
 app.get("/messages/:friendId", requireAuth, async (req: AuthedRequest, res) => {
   const userId = req.auth!.userId;
-  const friendId = req.params.friendId;
+  const friendId = String(req.params.friendId);
   const friends = await assertFriends(userId, friendId);
   if (!friends) return res.status(403).json({ error: "Not friends" });
 
@@ -553,7 +553,7 @@ app.post("/messages/:friendId", requireAuth, async (req: AuthedRequest, res) => 
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const userId = req.auth!.userId;
-  const friendId = req.params.friendId;
+  const friendId = String(req.params.friendId);
 
   const friends = await assertFriends(userId, friendId);
   if (!friends) return res.status(403).json({ error: "Not friends" });
@@ -655,7 +655,8 @@ app.post("/nudges", requireAuth, async (req: AuthedRequest, res) => {
 
 app.post("/nudges/:id/dismiss", requireAuth, async (req: AuthedRequest, res) => {
   const userId = req.auth!.userId;
-  const nudge = await prisma.nudge.findUnique({ where: { id: req.params.id } });
+  const nudgeId = String(req.params.id);
+  const nudge = await prisma.nudge.findUnique({ where: { id: nudgeId } });
   if (!nudge || nudge.recipientId !== userId) return res.status(404).json({ error: "Nudge not found" });
 
   await prisma.nudge.update({

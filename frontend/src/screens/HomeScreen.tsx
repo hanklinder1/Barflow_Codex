@@ -7,6 +7,8 @@ import type { Bar, Friend, Nudge } from "../types";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
 
+type LocationState = "detecting" | "enabled" | "disabled";
+
 export function HomeScreen() {
   const [bars, setBars] = useState<Bar[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -15,6 +17,7 @@ export function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedBarId, setSelectedBarId] = useState<string | null>(null);
+  const [locationState, setLocationState] = useState<LocationState>("detecting");
 
   const checkedInFriends = useMemo(() => friends.filter((f) => f.checkIn), [friends]);
   const selectedBar = useMemo(() => bars.find((bar) => bar.id === selectedBarId) ?? null, [bars, selectedBarId]);
@@ -57,6 +60,18 @@ export function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationState("disabled");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      () => setLocationState("enabled"),
+      () => setLocationState("disabled")
+    );
+  }, []);
+
   async function manualCheckIn(barId: string) {
     await api("/checkins/manual", "POST", { barId });
     loadAll();
@@ -69,19 +84,26 @@ export function HomeScreen() {
 
   async function autoCheckIn() {
     if (!navigator.geolocation) {
+      setLocationState("disabled");
       setError("Geolocation not supported");
       return;
     }
 
+    setLocationState("detecting");
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
+        setLocationState("enabled");
         await api("/checkins/auto", "POST", {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
         });
         loadAll();
       },
-      () => setError("Location permission denied")
+      () => {
+        setLocationState("disabled");
+        setError("Location permission denied");
+      }
     );
   }
 
@@ -94,8 +116,28 @@ export function HomeScreen() {
     await api("/nudges", "POST", { recipientId: friendUserId });
   }
 
+  const locationSubtext =
+    locationState === "detecting"
+      ? "Location enabled • Detecting..."
+      : locationState === "enabled"
+        ? "Location enabled"
+        : "Location permission not enabled";
+
   return (
     <div className="stack">
+      <section className="status-strip panel">
+        <div className="status-main row">
+          <span className={`status-dot ${selfCheckIn ? "online" : "idle"}`} />
+          <div>
+            <div className="status-title">{selfCheckIn ? `At ${selfCheckIn.barName}` : "Not currently at a bar"}</div>
+            <div className="small">{locationSubtext}</div>
+          </div>
+        </div>
+        <Link to="/settings">
+          <button className="secondary">Settings</button>
+        </Link>
+      </section>
+
       <section className="panel stack hero-panel">
         <h1 className="title">Tonight in Clemson</h1>
         <p className="small">{selfCheckIn ? `Checked in at ${selfCheckIn.barName}` : "You are currently not checked in"}</p>
@@ -124,9 +166,16 @@ export function HomeScreen() {
               <NavigationControl position="top-right" />
               {bars.map((bar) => (
                 <Marker key={bar.id} latitude={bar.latitude} longitude={bar.longitude}>
-                  <button className="bar-marker" onClick={() => setSelectedBarId(bar.id)}>
-                    <span>{bar.friendsHere?.length ?? 0}</span>
-                  </button>
+                  <button
+                    className="bar-marker"
+                    title={bar.name}
+                    aria-label={bar.name}
+                    onClick={() => setSelectedBarId(bar.id)}
+                    onMouseEnter={() => setSelectedBarId(bar.id)}
+                    onMouseLeave={() => setSelectedBarId((current) => (current === bar.id ? null : current))}
+                    onFocus={() => setSelectedBarId(bar.id)}
+                    onBlur={() => setSelectedBarId((current) => (current === bar.id ? null : current))}
+                  />
                 </Marker>
               ))}
               {selectedBar ? (
@@ -135,9 +184,8 @@ export function HomeScreen() {
                   longitude={selectedBar.longitude}
                   closeButton={false}
                   closeOnClick={false}
-                  onClose={() => setSelectedBarId(null)}
-                  anchor="bottom"
-                  offset={20}
+                  anchor="top"
+                  offset={18}
                 >
                   <div className="map-popup-title">{selectedBar.name}</div>
                   <div className="small">Friends here: {selectedBar.friendsHere?.length ?? 0}</div>

@@ -160,7 +160,7 @@ export function HomeScreen() {
                 longitude: -82.8375,
                 zoom: 16.2
               }}
-              mapStyle="mapbox://styles/mapbox/dark-v11"
+              mapStyle="mapbox://styles/mapbox/light-v11"
               style={{ width: "100%", height: "100%" }}
             >
               <NavigationControl position="top-right" />

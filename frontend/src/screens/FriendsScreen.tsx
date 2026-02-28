@@ -90,7 +90,7 @@ export function FriendsScreen() {
 
     const onMessage = (message: Message) => {
       if (activeFriendId && (message.senderId === activeFriendId || message.recipientId === activeFriendId)) {
-        setMessages((current) => [...current, message]);
+        setMessages((current) => (current.some((row) => row.id === message.id) ? current : [...current, message]));
       }
       refresh();
     };
@@ -149,8 +149,7 @@ export function FriendsScreen() {
     e.preventDefault();
     if (!activeFriendId || !text.trim()) return;
 
-    const message = await api<Message>(`/messages/${activeFriendId}`, "POST", { content: text.trim() });
-    setMessages((current) => [...current, message]);
+    await api<Message>(`/messages/${activeFriendId}`, "POST", { content: text.trim() });
     setText("");
     load();
   }

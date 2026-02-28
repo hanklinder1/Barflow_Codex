@@ -4,26 +4,63 @@ import { api } from "../api";
 import { applyTheme, getStoredTheme } from "../theme";
 
 type Theme = "dark" | "light";
+type PremiumTier = "FREE" | "PREMIUM" | "VIP";
 
-const avatarOptions: Array<{ value: string; label: string; emoji: string; premium?: boolean }> = [
-  { value: "tiger", label: "Tiger", emoji: "🐯", premium: true },
-  { value: "star", label: "Star", emoji: "⭐" },
-  { value: "lightning", label: "Lightning", emoji: "⚡" },
-  { value: "music", label: "Music", emoji: "🎵" },
-  { value: "soccer", label: "Soccer", emoji: "⚽" },
-  { value: "party", label: "Party", emoji: "🎉", premium: true },
-  { value: "moon", label: "Moon", emoji: "🌙" },
-  { value: "glasses", label: "Glasses", emoji: "🕶️", premium: true }
+type AvatarOption = {
+  value: string;
+  label: string;
+  emoji: string;
+  requiredTier: PremiumTier;
+};
+
+type Plan = {
+  id: PremiumTier;
+  name: string;
+  monthlyPrice: number;
+  perks: string[];
+};
+
+const avatarOptions: AvatarOption[] = [
+  { value: "star", label: "Star", emoji: "⭐", requiredTier: "FREE" },
+  { value: "lightning", label: "Lightning", emoji: "⚡", requiredTier: "FREE" },
+  { value: "music", label: "Music", emoji: "🎵", requiredTier: "FREE" },
+  { value: "soccer", label: "Soccer", emoji: "⚽", requiredTier: "FREE" },
+  { value: "moon", label: "Moon", emoji: "🌙", requiredTier: "FREE" },
+  { value: "tiger", label: "Tiger", emoji: "🐯", requiredTier: "PREMIUM" },
+  { value: "party", label: "Party", emoji: "🎉", requiredTier: "PREMIUM" },
+  { value: "glasses", label: "Shades", emoji: "🕶️", requiredTier: "PREMIUM" },
+  { value: "fire", label: "Fire", emoji: "🔥", requiredTier: "PREMIUM" },
+  { value: "rocket", label: "Rocket", emoji: "🚀", requiredTier: "PREMIUM" },
+  { value: "diamond", label: "Diamond", emoji: "💎", requiredTier: "VIP" },
+  { value: "crown", label: "Crown", emoji: "👑", requiredTier: "VIP" },
+  { value: "trophy", label: "Trophy", emoji: "🏆", requiredTier: "VIP" },
+  { value: "champagne", label: "Champagne", emoji: "🍾", requiredTier: "VIP" }
 ];
+
+const plans: Plan[] = [
+  { id: "FREE", name: "Free", monthlyPrice: 0, perks: ["Core check-ins", "Friends + messaging"] },
+  { id: "PREMIUM", name: "Premium", monthlyPrice: 4.99, perks: ["Premium icon set", "Priority nudge delivery"] },
+  { id: "VIP", name: "VIP", monthlyPrice: 9.99, perks: ["VIP icon set", "Future concierge features"] }
+];
+
+const tierRank: Record<PremiumTier, number> = {
+  FREE: 0,
+  PREMIUM: 1,
+  VIP: 2
+};
 
 export function SettingsScreen() {
   const auth = useAuth();
   const profile = auth.profile;
+
+  const currentTier: PremiumTier = profile?.premium ? "PREMIUM" : "FREE";
+
   const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
-  const [avatar, setAvatar] = useState(profile?.avatar ?? "tiger");
+  const [avatar, setAvatar] = useState(profile?.avatar ?? "star");
   const [theme, setTheme] = useState<Theme>("dark");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [billingNotice, setBillingNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setTheme(getStoredTheme());
@@ -33,6 +70,10 @@ export function SettingsScreen() {
     () => avatarOptions.find((option) => option.value === avatar) ?? avatarOptions[0],
     [avatar]
   );
+
+  function isLocked(option: AvatarOption) {
+    return tierRank[currentTier] < tierRank[option.requiredTier];
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -53,6 +94,10 @@ export function SettingsScreen() {
     applyTheme(next);
   }
 
+  function onUpgradeClick(targetTier: PremiumTier) {
+    setBillingNotice(`Billing setup pending: ${targetTier} checkout coming soon.`);
+  }
+
   return (
     <div className="stack">
       <section className="panel stack">
@@ -62,6 +107,7 @@ export function SettingsScreen() {
           <div>
             <strong>{selectedAvatar.label}</strong>
             <div className="small">This is how you appear to friends</div>
+            <div className="small">Tier: {currentTier}</div>
           </div>
         </div>
       </section>
@@ -70,8 +116,9 @@ export function SettingsScreen() {
         <h2 className="section-title">Choose Icon</h2>
         <div className="avatar-grid">
           {avatarOptions.map((option) => {
-            const locked = option.premium && !profile?.premium;
+            const locked = isLocked(option);
             const active = avatar === option.value;
+
             return (
               <button
                 key={option.value}
@@ -83,7 +130,7 @@ export function SettingsScreen() {
               >
                 <span className="avatar-emoji">{option.emoji}</span>
                 <span>{option.label}</span>
-                {locked ? <span className="lock-pill">Premium</span> : null}
+                {locked ? <span className="lock-pill">{option.requiredTier}</span> : null}
               </button>
             );
           })}
@@ -94,7 +141,16 @@ export function SettingsScreen() {
         <h2 className="section-title">Settings</h2>
 
         <form className="stack" onSubmit={onSubmit}>
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name" />
+          <div className="field-wrap">
+            <label className="small">Username</label>
+            <input value={`@${profile?.username ?? ""}`} readOnly />
+          </div>
+
+          <div className="field-wrap">
+            <label className="small">Display Name</label>
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name" />
+          </div>
+
           <button type="submit">Save profile</button>
         </form>
 
@@ -104,10 +160,14 @@ export function SettingsScreen() {
             <div className="small">Choose light or dark mode</div>
           </div>
           <div className="row">
-            <button className={theme === "dark" ? "" : "secondary"} onClick={() => onThemeToggle("dark")}>
+            <button type="button" className={theme === "dark" ? "" : "secondary"} onClick={() => onThemeToggle("dark")}>
               Dark
             </button>
-            <button className={theme === "light" ? "" : "secondary"} onClick={() => onThemeToggle("light")}>
+            <button
+              type="button"
+              className={theme === "light" ? "" : "secondary"}
+              onClick={() => onThemeToggle("light")}
+            >
               Light
             </button>
           </div>
@@ -121,15 +181,32 @@ export function SettingsScreen() {
           <span className="small">Managed in browser</span>
         </div>
 
-        <div className="settings-row">
-          <div>
-            <strong>Premium Status</strong>
-            <div className="small">{profile?.premium ? "Premium active" : "Unlock premium icons"}</div>
+        <div className="stack">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <strong>Premium Plans</strong>
+            <span className="small">Payment integration staged</span>
           </div>
-          <button className="secondary">{profile?.premium ? "Active" : "Upgrade"}</button>
+
+          {plans.map((plan) => (
+            <div key={plan.id} className="plan-row">
+              <div>
+                <strong>{plan.name}</strong>
+                <div className="small">{plan.monthlyPrice === 0 ? "$0/mo" : `$${plan.monthlyPrice}/mo`}</div>
+                <div className="small">{plan.perks.join(" • ")}</div>
+              </div>
+              <button
+                type="button"
+                className={currentTier === plan.id ? "secondary" : ""}
+                onClick={() => onUpgradeClick(plan.id)}
+                disabled={plan.id === "FREE" || currentTier === plan.id}
+              >
+                {currentTier === plan.id ? "Active" : "Upgrade"}
+              </button>
+            </div>
+          ))}
         </div>
 
-        <div className="small">Username: @{profile?.username}</div>
+        {billingNotice ? <div className="notice-pill">{billingNotice}</div> : null}
         {saved ? <p style={{ color: "#53cf8b", margin: 0 }}>Saved.</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
       </section>

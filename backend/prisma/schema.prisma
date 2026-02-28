@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  passwordHash String
+  createdAt    DateTime        @default(now())
+  profile      Profile?
+  sentRequests FriendRequest[] @relation("SentRequests")
+  recvRequests FriendRequest[] @relation("ReceivedRequests")
+  friendshipsA Friendship[]    @relation("FriendshipA")
+  friendshipsB Friendship[]    @relation("FriendshipB")
+  checkIn      CheckIn?
+  sentMessages Message[]       @relation("MessageSender")
+  recvMessages Message[]       @relation("MessageRecipient")
+  sentNudges   Nudge[]         @relation("NudgeSender")
+  recvNudges   Nudge[]         @relation("NudgeRecipient")
+}
+
+model Profile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  username     String   @unique
+  displayName  String
+  avatar       String
+  premium      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FriendRequest {
+  id          String   @id @default(cuid())
+  fromUserId  String
+  toUserId    String
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  respondedAt DateTime?
+  fromUser    User     @relation("SentRequests", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User     @relation("ReceivedRequests", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
+}
+
+model Friendship {
+  id        String   @id @default(cuid())
+  userAId   String
+  userBId   String
+  createdAt DateTime @default(now())
+  userA     User     @relation("FriendshipA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB     User     @relation("FriendshipB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+}
+
+model Bar {
+  id          String   @id
+  name        String
+  latitude    Float
+  longitude   Float
+  tagline     String
+  vibeTags    String
+  musicStyle  String
+  lineLevel   String
+  bestNights  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  checkIns    CheckIn[]
+  nudges      Nudge[]
+}
+
+model CheckIn {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  barId     String
+  method    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bar       Bar      @relation(fields: [barId], references: [id], onDelete: Cascade)
+
+  @@index([barId])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  content     String
+  sentAt      DateTime @default(now())
+  readAt      DateTime?
+  sender      User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User     @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, recipientId, sentAt])
+  @@index([recipientId, readAt])
+}
+
+model Nudge {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  barId       String
+  createdAt   DateTime @default(now())
+  dismissedAt DateTime?
+  sender      User     @relation("NudgeSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User     @relation("NudgeRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  bar         Bar      @relation(fields: [barId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, dismissedAt, createdAt])
+}

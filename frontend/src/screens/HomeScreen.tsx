@@ -1,0 +1,193 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import L from "leaflet";
+import { api } from "../api";
+import { connectSocket } from "../socket";
+import type { Bar, Friend, Nudge } from "../types";
+
+const icon = new L.Icon({
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+});
+
+export function HomeScreen() {
+  const [bars, setBars] = useState<Bar[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [nudges, setNudges] = useState<Nudge[]>([]);
+  const [selfCheckIn, setSelfCheckIn] = useState<null | { barId: string; barName: string }>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const checkedInFriends = useMemo(() => friends.filter((f) => f.checkIn), [friends]);
+
+  async function loadAll() {
+    setError(null);
+    try {
+      const [overview, friendData, nudgeData] = await Promise.all([
+        api<{ bars: Bar[]; selfCheckIn: any }>("/map/overview"),
+        api<Friend[]>("/friends"),
+        api<Nudge[]>("/nudges")
+      ]);
+
+      setBars(overview.bars);
+      setFriends(friendData);
+      setNudges(nudgeData);
+      setSelfCheckIn(
+        overview.selfCheckIn
+          ? {
+              barId: overview.selfCheckIn.barId,
+              barName: overview.selfCheckIn.barName
+            }
+          : null
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAll();
+    const socket = connectSocket();
+    if (!socket) return;
+
+    const handler = () => loadAll();
+    socket.on("checkin:update", handler);
+    socket.on("nudge:new", handler);
+    socket.on("friend:accepted", handler);
+
+    return () => {
+      socket.off("checkin:update", handler);
+      socket.off("nudge:new", handler);
+      socket.off("friend:accepted", handler);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function manualCheckIn(barId: string) {
+    await api("/checkins/manual", "POST", { barId });
+    loadAll();
+  }
+
+  async function checkOut() {
+    await api("/checkins/checkout", "POST");
+    loadAll();
+  }
+
+  async function autoCheckIn() {
+    if (!navigator.geolocation) {
+      setError("Geolocation not supported");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        await api("/checkins/auto", "POST", {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+        loadAll();
+      },
+      () => setError("Location permission denied")
+    );
+  }
+
+  async function dismissNudge(nudgeId: string) {
+    await api(`/nudges/${nudgeId}/dismiss`, "POST");
+    setNudges((current) => current.filter((n) => n.id !== nudgeId));
+  }
+
+  async function sendNudge(friendUserId: string) {
+    await api("/nudges", "POST", { recipientId: friendUserId });
+  }
+
+  return (
+    <div className="stack">
+      <section className="panel stack">
+        <h1 className="title">Tonight in Clemson</h1>
+        <p className="small">{selfCheckIn ? `You are at ${selfCheckIn.barName}` : "Not currently checked in"}</p>
+        <div className="row wrap">
+          <button onClick={autoCheckIn}>Auto Check-In</button>
+          <button className="secondary" onClick={checkOut}>
+            Check Out
+          </button>
+        </div>
+        {error ? <p style={{ color: "#fca5a5", margin: 0 }}>{error}</p> : null}
+      </section>
+
+      <section className="panel">
+        <div className="map-wrap">
+          <MapContainer center={[34.6831, -82.8382]} zoom={16} style={{ width: "100%", height: "100%" }}>
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            {bars.map((bar) => (
+              <Marker key={bar.id} icon={icon} position={[bar.latitude, bar.longitude]}>
+                <Popup>
+                  <strong>{bar.name}</strong>
+                  <br />
+                  {bar.tagline}
+                  <br />
+                  {bar.vibeTags.join(" • ")}
+                  <br />
+                  Friends here: {bar.friendsHere?.length ?? 0}
+                  <br />
+                  <button onClick={() => manualCheckIn(bar.id)}>Check In Here</button>
+                </Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+        </div>
+      </section>
+
+      <section className="panel stack">
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0 }}>Friends Out ({checkedInFriends.length})</h2>
+          <Link to="/friends" className="small">
+            Manage friends
+          </Link>
+        </div>
+        {friends.map((friend) => (
+          <div className="list-item" key={friend.userId}>
+            <div>
+              <strong>{friend.displayName}</strong>
+              <div className="small">@{friend.username}</div>
+              <div>{friend.checkIn ? `At ${friend.checkIn.barName}` : "Not out"}</div>
+            </div>
+            <div className="row">
+              <Link to={`/messages/${friend.userId}`}>
+                <button className="secondary">Message</button>
+              </Link>
+              {selfCheckIn ? <button onClick={() => sendNudge(friend.userId)}>Nudge</button> : null}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="panel stack">
+        <h2 style={{ margin: 0 }}>Nudges {nudges.length > 0 ? `(${nudges.length})` : ""}</h2>
+        {nudges.map((nudge) => (
+          <div key={nudge.id} className="list-item">
+            <div>
+              <strong>{nudge.sender.displayName}</strong> wants you at <strong>{nudge.bar.name}</strong>
+              <div className="small">{new Date(nudge.createdAt).toLocaleTimeString()}</div>
+            </div>
+            <div className="row">
+              <button className="secondary" onClick={() => dismissNudge(nudge.id)}>
+                Dismiss
+              </button>
+              <button onClick={() => manualCheckIn(nudge.bar.id)}>See Bar</button>
+            </div>
+          </div>
+        ))}
+        {!loading && nudges.length === 0 ? <div className="small">No active nudges.</div> : null}
+      </section>
+    </div>
+  );
+}
+

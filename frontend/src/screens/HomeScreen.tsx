@@ -131,13 +131,7 @@ export function HomeScreen() {
                 <Popup>
                   <strong>{bar.name}</strong>
                   <br />
-                  {bar.tagline}
-                  <br />
-                  {bar.vibeTags.join(" • ")}
-                  <br />
                   Friends here: {bar.friendsHere?.length ?? 0}
-                  <br />
-                  <button onClick={() => manualCheckIn(bar.id)}>Check In Here</button>
                 </Popup>
               </Marker>
             ))}
@@ -190,4 +184,3 @@ export function HomeScreen() {
     </div>
   );
 }
-

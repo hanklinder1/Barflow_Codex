@@ -299,7 +299,19 @@ app.get("/friends", requireAuth, async (req: AuthedRequest, res) => {
     })
   ]);
 
-  const checkInMap = new Map(checkIns.map((c) => [c.userId, c]));
+  const checkInMap = new Map<
+    string,
+    { barId: string; barName: string; updatedAt: Date }
+  >(
+    checkIns.map((c) => [
+      c.userId,
+      {
+        barId: c.barId,
+        barName: c.bar.name,
+        updatedAt: c.updatedAt
+      }
+    ])
+  );
 
   const data = profiles
     .map((profile) => ({
@@ -307,7 +319,7 @@ app.get("/friends", requireAuth, async (req: AuthedRequest, res) => {
       checkIn: checkInMap.get(profile.userId)
         ? {
             barId: checkInMap.get(profile.userId)!.barId,
-            barName: checkInMap.get(profile.userId)!.bar.name,
+            barName: checkInMap.get(profile.userId)!.barName,
             updatedAt: checkInMap.get(profile.userId)!.updatedAt
           }
         : null
@@ -339,7 +351,10 @@ app.get("/map/overview", requireAuth, async (req: AuthedRequest, res) => {
   ]);
 
   const byBar: Record<string, Array<{ userId: string; displayName: string; username: string; avatar: string }>> = {};
-  const profileMap = new Map(friendProfiles.map((p) => [p.userId, p]));
+  const profileMap = new Map<
+    string,
+    { userId: string; displayName: string; username: string; avatar: string }
+  >(friendProfiles.map((p) => [p.userId, p]));
 
   friendCheckIns.forEach((checkIn) => {
     const profile = profileMap.get(checkIn.userId);

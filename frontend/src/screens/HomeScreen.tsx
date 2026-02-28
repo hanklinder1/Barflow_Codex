@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
-import L from "leaflet";
+import Map, { Marker, NavigationControl, Popup } from "react-map-gl/mapbox";
 import { api } from "../api";
 import { connectSocket } from "../socket";
 import type { Bar, Friend, Nudge } from "../types";
 
-const icon = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41]
-});
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
 
 export function HomeScreen() {
   const [bars, setBars] = useState<Bar[]>([]);
@@ -20,14 +14,16 @@ export function HomeScreen() {
   const [selfCheckIn, setSelfCheckIn] = useState<null | { barId: string; barName: string }>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedBarId, setSelectedBarId] = useState<string | null>(null);
 
   const checkedInFriends = useMemo(() => friends.filter((f) => f.checkIn), [friends]);
+  const selectedBar = useMemo(() => bars.find((bar) => bar.id === selectedBarId) ?? null, [bars, selectedBarId]);
 
   async function loadAll() {
     setError(null);
     try {
       const [overview, friendData, nudgeData] = await Promise.all([
-        api<{ bars: Bar[]; selfCheckIn: any }>("/map/overview"),
+        api<{ bars: Bar[]; selfCheckIn: { barId: string; barName: string } | null }>("/map/overview"),
         api<Friend[]>("/friends"),
         api<Nudge[]>("/nudges")
       ]);
@@ -35,14 +31,7 @@ export function HomeScreen() {
       setBars(overview.bars);
       setFriends(friendData);
       setNudges(nudgeData);
-      setSelfCheckIn(
-        overview.selfCheckIn
-          ? {
-              barId: overview.selfCheckIn.barId,
-              barName: overview.selfCheckIn.barName
-            }
-          : null
-      );
+      setSelfCheckIn(overview.selfCheckIn);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -107,41 +96,78 @@ export function HomeScreen() {
 
   return (
     <div className="stack">
-      <section className="panel stack">
+      <section className="panel stack hero-panel">
         <h1 className="title">Tonight in Clemson</h1>
-        <p className="small">{selfCheckIn ? `You are at ${selfCheckIn.barName}` : "Not currently checked in"}</p>
+        <p className="small">{selfCheckIn ? `Checked in at ${selfCheckIn.barName}` : "You are currently not checked in"}</p>
         <div className="row wrap">
           <button onClick={autoCheckIn}>Auto Check-In</button>
           <button className="secondary" onClick={checkOut}>
             Check Out
           </button>
         </div>
-        {error ? <p style={{ color: "#fca5a5", margin: 0 }}>{error}</p> : null}
+        {error ? <p className="error-text">{error}</p> : null}
       </section>
 
       <section className="panel">
         <div className="map-wrap">
-          <MapContainer center={[34.6831, -82.8382]} zoom={16} style={{ width: "100%", height: "100%" }}>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {bars.map((bar) => (
-              <Marker key={bar.id} icon={icon} position={[bar.latitude, bar.longitude]}>
-                <Popup>
-                  <strong>{bar.name}</strong>
-                  <br />
-                  Friends here: {bar.friendsHere?.length ?? 0}
+          {MAPBOX_TOKEN ? (
+            <Map
+              mapboxAccessToken={MAPBOX_TOKEN}
+              initialViewState={{
+                latitude: 34.6832,
+                longitude: -82.8375,
+                zoom: 16.2
+              }}
+              mapStyle="mapbox://styles/mapbox/dark-v11"
+              style={{ width: "100%", height: "100%" }}
+            >
+              <NavigationControl position="top-right" />
+              {bars.map((bar) => (
+                <Marker key={bar.id} latitude={bar.latitude} longitude={bar.longitude}>
+                  <button className="bar-marker" onClick={() => setSelectedBarId(bar.id)}>
+                    <span>{bar.friendsHere?.length ?? 0}</span>
+                  </button>
+                </Marker>
+              ))}
+              {selectedBar ? (
+                <Popup
+                  latitude={selectedBar.latitude}
+                  longitude={selectedBar.longitude}
+                  closeButton={false}
+                  closeOnClick={false}
+                  onClose={() => setSelectedBarId(null)}
+                  anchor="bottom"
+                  offset={20}
+                >
+                  <div className="map-popup-title">{selectedBar.name}</div>
+                  <div className="small">Friends here: {selectedBar.friendsHere?.length ?? 0}</div>
                 </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
+              ) : null}
+            </Map>
+          ) : (
+            <div className="map-token-warning">
+              Missing Mapbox token. Set <code>VITE_MAPBOX_TOKEN</code> in frontend env vars.
+            </div>
+          )}
         </div>
       </section>
 
       <section className="panel stack">
+        <h2 className="section-title">Bars</h2>
+        {bars.map((bar) => (
+          <div className="list-item" key={bar.id}>
+            <div>
+              <strong>{bar.name}</strong>
+              <div className="small">Friends here: {bar.friendsHere?.length ?? 0}</div>
+            </div>
+            <button onClick={() => manualCheckIn(bar.id)}>Check In</button>
+          </div>
+        ))}
+      </section>
+
+      <section className="panel stack">
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0 }}>Friends Out ({checkedInFriends.length})</h2>
+          <h2 className="section-title">Friends Out ({checkedInFriends.length})</h2>
           <Link to="/friends" className="small">
             Manage friends
           </Link>
@@ -164,7 +190,7 @@ export function HomeScreen() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>Nudges {nudges.length > 0 ? `(${nudges.length})` : ""}</h2>
+        <h2 className="section-title">Nudges {nudges.length > 0 ? `(${nudges.length})` : ""}</h2>
         {nudges.map((nudge) => (
           <div key={nudge.id} className="list-item">
             <div>

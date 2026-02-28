@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { api } from "../api";
+import Logo from "../components/Logo";
 
 const avatars = ["tiger", "star", "lightning", "music", "soccer", "party", "moon", "glasses"];
 const avatarEmoji: Record<string, string> = {
@@ -45,6 +46,7 @@ export function OnboardingScreen() {
   return (
     <div className="app-main">
       <div className="panel stack">
+        <Logo size="md" />
         <h1 className="title">Create your profile</h1>
         <form className="stack" onSubmit={onSubmit}>
           <input

@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../auth";
+import Logo from "../components/Logo";
 
 export function AuthScreen() {
   const auth = useAuth();
@@ -20,9 +21,9 @@ export function AuthScreen() {
 
   return (
     <div className="app-main">
-      <div className="panel stack" style={{ marginTop: 60 }}>
-        <h1 className="title">BarFlow</h1>
-        <p>Where are my friends and what is going on tonight?</p>
+      <div className="panel stack auth-card">
+        <Logo size="lg" />
+        <p className="small">Where are my friends and what is going on tonight?</p>
         <form className="stack" onSubmit={onSubmit}>
           <input
             type="email"

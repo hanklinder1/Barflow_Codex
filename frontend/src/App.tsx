@@ -6,10 +6,14 @@ import { HomeScreen } from "./screens/HomeScreen";
 import { FriendsScreen } from "./screens/FriendsScreen";
 import { MessagesScreen } from "./screens/MessagesScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import Logo from "./components/Logo";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
+      <header className="app-header">
+        <Logo size="sm" />
+      </header>
       <main className="app-main">{children}</main>
       <nav className="tab-nav">
         <NavLink to="/" end>

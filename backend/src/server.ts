@@ -47,6 +47,44 @@ function emitToUsers(userIds: string[], event: string, payload: unknown) {
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+app.get("/admin/checkins", async (req, res) => {
+  if (!config.adminDebugKey) {
+    return res.status(503).json({ error: "Admin debug key not configured" });
+  }
+
+  const key = String(req.headers["x-admin-debug-key"] ?? "");
+  if (key !== config.adminDebugKey) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const activeCheckIns = await prisma.checkIn.findMany({
+    include: {
+      bar: true,
+      user: {
+        include: {
+          profile: true
+        }
+      }
+    },
+    orderBy: { updatedAt: "desc" }
+  });
+
+  return res.json({
+    activeCount: activeCheckIns.length,
+    checkIns: activeCheckIns.map((entry) => ({
+      checkInId: entry.id,
+      userId: entry.userId,
+      username: entry.user.profile?.username ?? null,
+      displayName: entry.user.profile?.displayName ?? null,
+      barId: entry.barId,
+      barName: entry.bar.name,
+      method: entry.method,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt
+    }))
+  });
+});
+
 app.post("/auth/signup", async (req, res) => {
   const schema = z.object({
     email: z.string().email(),

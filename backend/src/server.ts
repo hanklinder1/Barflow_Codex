@@ -219,27 +219,23 @@ app.get("/billing/plans", requireAuth, async (req: AuthedRequest, res) => {
       {
         id: "FREE",
         name: "Free",
-        monthlyPrice: 0,
+        price: 0,
+        priceType: "ONE_TIME",
         features: ["Core check-ins", "Friends + messaging", "Map visibility"]
       },
       {
         id: "PREMIUM",
         name: "Premium",
-        monthlyPrice: 4.99,
-        features: ["Premium icon pack", "Priority nudge delivery", "Early feature access"]
-      },
-      {
-        id: "VIP",
-        name: "VIP",
-        monthlyPrice: 9.99,
-        features: ["VIP icon pack", "VIP profile flair", "Future concierge features"]
+        price: 3.99,
+        priceType: "ONE_TIME",
+        features: ["Premium icon pack access"]
       }
     ]
   });
 });
 
 app.post("/billing/checkout-session", requireAuth, async (req: AuthedRequest, res) => {
-  const schema = z.object({ planId: z.enum(["PREMIUM", "VIP"]) });
+  const schema = z.object({ planId: z.literal("PREMIUM") });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -250,11 +246,13 @@ app.post("/billing/checkout-session", requireAuth, async (req: AuthedRequest, re
     return res.status(409).json({ error: "Plan already active" });
   }
 
-  const sessionId = `stub_${parsed.data.planId.toLowerCase()}_${Date.now()}`;
+  const sessionId = `stub_premium_onetime_${Date.now()}`;
   return res.status(201).json({
     sessionId,
     status: "STUB_READY",
     planId: parsed.data.planId,
+    paymentType: "ONE_TIME",
+    amount: 3.99,
     checkoutUrl: `${config.clientOrigin}/settings?billing=${sessionId}`
   });
 });

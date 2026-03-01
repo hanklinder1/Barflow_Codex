@@ -4,50 +4,44 @@ import { api } from "../api";
 import { applyTheme, getStoredTheme } from "../theme";
 
 type Theme = "dark" | "light";
-type PremiumTier = "FREE" | "PREMIUM" | "VIP";
+type PremiumTier = "FREE" | "PREMIUM";
 
 type AvatarOption = {
   value: string;
   label: string;
   emoji: string;
-  requiredTier: PremiumTier;
+  premium?: boolean;
 };
 
 type Plan = {
   id: PremiumTier;
   name: string;
-  monthlyPrice: number;
+  price: number;
+  priceType: "ONE_TIME";
   features: string[];
 };
 
 const avatarOptions: AvatarOption[] = [
-  { value: "star", label: "Star", emoji: "⭐", requiredTier: "FREE" },
-  { value: "lightning", label: "Lightning", emoji: "⚡", requiredTier: "FREE" },
-  { value: "music", label: "Music", emoji: "🎵", requiredTier: "FREE" },
-  { value: "soccer", label: "Soccer", emoji: "⚽", requiredTier: "FREE" },
-  { value: "moon", label: "Moon", emoji: "🌙", requiredTier: "FREE" },
-  { value: "tiger", label: "Tiger", emoji: "🐯", requiredTier: "PREMIUM" },
-  { value: "party", label: "Party", emoji: "🎉", requiredTier: "PREMIUM" },
-  { value: "glasses", label: "Shades", emoji: "🕶️", requiredTier: "PREMIUM" },
-  { value: "fire", label: "Fire", emoji: "🔥", requiredTier: "PREMIUM" },
-  { value: "rocket", label: "Rocket", emoji: "🚀", requiredTier: "PREMIUM" },
-  { value: "diamond", label: "Diamond", emoji: "💎", requiredTier: "VIP" },
-  { value: "crown", label: "Crown", emoji: "👑", requiredTier: "VIP" },
-  { value: "trophy", label: "Trophy", emoji: "🏆", requiredTier: "VIP" },
-  { value: "champagne", label: "Champagne", emoji: "🍾", requiredTier: "VIP" }
+  { value: "star", label: "Star", emoji: "⭐" },
+  { value: "lightning", label: "Lightning", emoji: "⚡" },
+  { value: "music", label: "Music", emoji: "🎵" },
+  { value: "soccer", label: "Soccer", emoji: "⚽" },
+  { value: "moon", label: "Moon", emoji: "🌙" },
+  { value: "tiger", label: "Tiger", emoji: "🐯", premium: true },
+  { value: "party", label: "Party", emoji: "🎉", premium: true },
+  { value: "glasses", label: "Shades", emoji: "🕶️", premium: true },
+  { value: "fire", label: "Fire", emoji: "🔥", premium: true },
+  { value: "rocket", label: "Rocket", emoji: "🚀", premium: true },
+  { value: "diamond", label: "Diamond", emoji: "💎", premium: true },
+  { value: "crown", label: "Crown", emoji: "👑", premium: true },
+  { value: "trophy", label: "Trophy", emoji: "🏆", premium: true },
+  { value: "champagne", label: "Champagne", emoji: "🍾", premium: true }
 ];
 
-const plans: Plan[] = [
-  { id: "FREE", name: "Free", monthlyPrice: 0, features: ["Core check-ins", "Friends + messaging"] },
-  { id: "PREMIUM", name: "Premium", monthlyPrice: 4.99, features: ["Premium icon set", "Priority nudge delivery"] },
-  { id: "VIP", name: "VIP", monthlyPrice: 9.99, features: ["VIP icon set", "Future concierge features"] }
+const defaultPlans: Plan[] = [
+  { id: "FREE", name: "Free", price: 0, priceType: "ONE_TIME", features: ["Core check-ins", "Friends + messaging"] },
+  { id: "PREMIUM", name: "Premium", price: 3.99, priceType: "ONE_TIME", features: ["Premium icon pack access"] }
 ];
-
-const tierRank: Record<PremiumTier, number> = {
-  FREE: 0,
-  PREMIUM: 1,
-  VIP: 2
-};
 
 export function SettingsScreen() {
   const auth = useAuth();
@@ -58,7 +52,7 @@ export function SettingsScreen() {
   const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
   const [avatar, setAvatar] = useState(profile?.avatar ?? "star");
   const [theme, setTheme] = useState<Theme>("dark");
-  const [planRows, setPlanRows] = useState<Plan[]>(plans);
+  const [planRows, setPlanRows] = useState<Plan[]>(defaultPlans);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [billingNotice, setBillingNotice] = useState<string | null>(null);
@@ -69,9 +63,7 @@ export function SettingsScreen() {
 
   useEffect(() => {
     api<{ plans: Plan[] }>("/billing/plans")
-      .then((data) => {
-        setPlanRows(data.plans);
-      })
+      .then((data) => setPlanRows(data.plans))
       .catch(() => undefined);
   }, []);
 
@@ -79,10 +71,10 @@ export function SettingsScreen() {
     () => avatarOptions.find((option) => option.value === avatar) ?? avatarOptions[0],
     [avatar]
   );
-
-  function isLocked(option: AvatarOption) {
-    return tierRank[currentTier] < tierRank[option.requiredTier];
-  }
+  const premiumPlan = useMemo(
+    () => planRows.find((plan) => plan.id === "PREMIUM") ?? defaultPlans.find((plan) => plan.id === "PREMIUM")!,
+    [planRows]
+  );
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -103,14 +95,10 @@ export function SettingsScreen() {
     applyTheme(next);
   }
 
-  async function onUpgradeClick(targetTier: PremiumTier) {
+  async function onUpgradeClick() {
     try {
-      const checkout = await api<{ checkoutUrl: string; sessionId: string; status: string }>(
-        "/billing/checkout-session",
-        "POST",
-        { planId: targetTier }
-      );
-      setBillingNotice(`Billing session ready (${checkout.sessionId}). Redirect URL prepared.`);
+      const checkout = await api<{ sessionId: string }>("/billing/checkout-session", "POST", { planId: "PREMIUM" });
+      setBillingNotice(`Premium checkout session ready (${checkout.sessionId}). Payment integration comes next.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start checkout");
     }
@@ -134,7 +122,7 @@ export function SettingsScreen() {
         <h2 className="section-title">Choose Icon</h2>
         <div className="avatar-grid">
           {avatarOptions.map((option) => {
-            const locked = isLocked(option);
+            const locked = Boolean(option.premium) && !profile?.premium;
             const active = avatar === option.value;
 
             return (
@@ -148,7 +136,7 @@ export function SettingsScreen() {
               >
                 <span className="avatar-emoji">{option.emoji}</span>
                 <span>{option.label}</span>
-                {locked ? <span className="lock-pill">{option.requiredTier}</span> : null}
+                {locked ? <span className="lock-pill">PREMIUM</span> : null}
               </button>
             );
           })}
@@ -193,35 +181,18 @@ export function SettingsScreen() {
 
         <div className="settings-row">
           <div>
-            <strong>Location Services</strong>
-            <div className="small">Enable automatic check-ins</div>
+            <strong>Premium (One-Time)</strong>
+            <div className="small">Unlock premium icon pack forever with a one-time payment</div>
           </div>
-          <span className="small">Managed in browser</span>
-        </div>
-
-        <div className="stack">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <strong>Premium Plans</strong>
-            <span className="small">Payment integration staged</span>
-          </div>
-
-          {planRows.map((plan) => (
-            <div key={plan.id} className="plan-row">
-              <div>
-                <strong>{plan.name}</strong>
-                <div className="small">{plan.monthlyPrice === 0 ? "$0/mo" : `$${plan.monthlyPrice}/mo`}</div>
-                <div className="small">{plan.features.join(" • ")}</div>
-              </div>
-              <button
-                type="button"
-                className={currentTier === plan.id ? "secondary" : ""}
-                onClick={() => onUpgradeClick(plan.id)}
-                disabled={plan.id === "FREE" || currentTier === plan.id}
-              >
-                {currentTier === plan.id ? "Active" : "Upgrade"}
-              </button>
-            </div>
-          ))}
+          {currentTier === "PREMIUM" ? (
+            <button type="button" className="secondary" disabled>
+              Active
+            </button>
+          ) : (
+            <button type="button" onClick={onUpgradeClick}>
+              Upgrade ${premiumPlan.price.toFixed(2)} one-time
+            </button>
+          )}
         </div>
 
         {billingNotice ? <div className="notice-pill">{billingNotice}</div> : null}

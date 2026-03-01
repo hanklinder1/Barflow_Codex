@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Map, { Marker, Popup } from "react-map-gl/mapbox";
 import { api } from "../api";
 import { connectSocket } from "../socket";
-import type { Bar } from "../types";
+import type { Bar, Friend } from "../types";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
 
@@ -11,24 +11,44 @@ type LocationState = "detecting" | "enabled" | "disabled";
 
 export function HomeScreen() {
   const [bars, setBars] = useState<Bar[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
   const [selfCheckIn, setSelfCheckIn] = useState<null | { barId: string; barName: string }>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedBarId, setSelectedBarId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<LocationState>("detecting");
 
+  const lastSentAtRef = useRef(0);
+  const watchIdRef = useRef<number | null>(null);
+
   const selectedBar = useMemo(() => bars.find((bar) => bar.id === selectedBarId) ?? null, [bars, selectedBarId]);
+  const checkedInFriends = useMemo(() => friends.filter((friend) => friend.checkIn), [friends]);
 
   async function loadAll() {
     setError(null);
     try {
-      const overview = await api<{ bars: Bar[]; selfCheckIn: { barId: string; barName: string } | null }>(
-        "/map/overview"
-      );
+      const [overview, friendData] = await Promise.all([
+        api<{ bars: Bar[]; selfCheckIn: { barId: string; barName: string } | null }>("/map/overview"),
+        api<Friend[]>("/friends")
+      ]);
 
       setBars(overview.bars);
+      setFriends(friendData);
       setSelfCheckIn(overview.selfCheckIn);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
+    }
+  }
+
+  async function sendAutoLocation(latitude: number, longitude: number, accuracy: number) {
+    const now = Date.now();
+    if (now - lastSentAtRef.current < 6000) return;
+    lastSentAtRef.current = now;
+
+    try {
+      await api("/checkins/auto", "POST", { latitude, longitude, accuracy });
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update location");
     }
   }
 
@@ -39,15 +59,12 @@ export function HomeScreen() {
 
     const handler = () => loadAll();
     socket.on("checkin:update", handler);
-    socket.on("nudge:new", handler);
     socket.on("friend:accepted", handler);
 
     return () => {
       socket.off("checkin:update", handler);
-      socket.off("nudge:new", handler);
       socket.off("friend:accepted", handler);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -56,59 +73,37 @@ export function HomeScreen() {
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        setLocationState("enabled");
-        try {
-          await api("/checkins/auto", "POST", {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy
-          });
-          loadAll();
-        } catch {
-          // Ignore single-shot auto-detect failures on initial page load.
-        }
-      },
-      () => setLocationState("disabled")
-    );
-  }, []);
-
-  async function manualCheckIn(barId: string) {
-    await api("/checkins/manual", "POST", { barId });
-    loadAll();
-  }
-
-  async function checkOut() {
-    await api("/checkins/checkout", "POST");
-    loadAll();
-  }
-
-  async function autoCheckIn() {
-    if (!navigator.geolocation) {
-      setLocationState("disabled");
-      setError("Geolocation not supported");
-      return;
-    }
-
     setLocationState("detecting");
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         setLocationState("enabled");
-        await api("/checkins/auto", "POST", {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy
-        });
-        loadAll();
+        await sendAutoLocation(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
       },
       () => {
         setLocationState("disabled");
-        setError("Location permission denied");
-      }
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
     );
-  }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        setLocationState("enabled");
+        await sendAutoLocation(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+      },
+      () => {
+        setLocationState("disabled");
+      },
+      { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 }
+    );
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const locationSubtext =
     locationState === "detecting"
@@ -140,9 +135,9 @@ export function HomeScreen() {
               initialViewState={{
                 latitude: 34.6832,
                 longitude: -82.8375,
-                zoom: 16.2
+                zoom: 16.25
               }}
-              mapStyle="mapbox://styles/mapbox/light-v11"
+              mapStyle="mapbox://styles/mapbox/navigation-day-v1"
               style={{ width: "100%", height: "100%" }}
             >
               {bars.map((bar) => (
@@ -183,25 +178,29 @@ export function HomeScreen() {
 
       <section className="panel stack">
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 className="section-title">Bars</h2>
-          <div className="row">
-            <button onClick={autoCheckIn}>Auto Check-In</button>
-            <button className="secondary" onClick={checkOut}>
-              Check Out
-            </button>
-          </div>
+          <h2 className="section-title">Friends Out ({checkedInFriends.length})</h2>
+          <Link to="/friends" className="small">
+            Manage friends
+          </Link>
         </div>
-        {error ? <p className="error-text">{error}</p> : null}
-        {bars.map((bar) => (
-          <div className="list-item" key={bar.id}>
+        {friends.map((friend) => (
+          <div className="list-item" key={friend.userId}>
             <div>
-              <strong>{bar.name}</strong>
-              <div className="small">Friends here: {bar.friendsHere?.length ?? 0}</div>
+              <strong>{friend.displayName}</strong>
+              <div className="small">@{friend.username}</div>
+              <div>{friend.checkIn ? `At ${friend.checkIn.barName}` : "Not out"}</div>
             </div>
-            <button onClick={() => manualCheckIn(bar.id)}>Check In</button>
+            <div className="row">
+              <Link to={`/friends/${friend.userId}`}>
+                <button className="secondary">Message</button>
+              </Link>
+            </div>
           </div>
         ))}
+        {friends.length === 0 ? <div className="small">No friends yet.</div> : null}
       </section>
+
+      {error ? <p className="error-text">{error}</p> : null}
     </div>
   );
 }

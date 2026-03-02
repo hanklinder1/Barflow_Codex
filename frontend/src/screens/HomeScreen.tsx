@@ -17,6 +17,7 @@ export function HomeScreen() {
   const [selfCheckIn, setSelfCheckIn] = useState<null | { barId: string; barName: string }>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedBarId, setSelectedBarId] = useState<string | null>(null);
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<LocationState>("detecting");
 
   const lastSentAtRef = useRef(0);
@@ -24,6 +25,10 @@ export function HomeScreen() {
 
   const selectedBar = useMemo(() => bars.find((bar) => bar.id === selectedBarId) ?? null, [bars, selectedBarId]);
   const checkedInFriends = useMemo(() => friends.filter((friend) => friend.checkIn), [friends]);
+  const selectedFriend = useMemo(
+    () => checkedInFriends.find((friend) => friend.userId === selectedFriendId) ?? null,
+    [checkedInFriends, selectedFriendId]
+  );
 
   async function loadAll() {
     setError(null);
@@ -75,9 +80,15 @@ export function HomeScreen() {
       setLocationState("enabled");
       setSelfCheckIn({ barId: "studyhall", barName: "Study Hall" });
       setBars([
+        { id: "tds", name: "TD's", latitude: 34.682314, longitude: -82.837301, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
         { id: "studyhall", name: "Study Hall", latitude: 34.683367925520535, longitude: -82.83780545981314, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
+        { id: "loosechange", name: "Loose Change", latitude: 34.68261587100437, longitude: -82.8374952770089, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
+        { id: "bar356", name: "356 Bar", latitude: 34.68301778370416, longitude: -82.83740070964124, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
         { id: "backstreets", name: "Backstreets", latitude: 34.6836255716976, longitude: -82.83666011989295, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
-        { id: "roar", name: "Roar", latitude: 34.68377598519009, longitude: -82.83715758322684, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] }
+        { id: "nickstavern", name: "Nick's Tavern", latitude: 34.68363585964464, longitude: -82.83791220836441, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
+        { id: "tripletts", name: "Triple T's", latitude: 34.68334154440909, longitude: -82.83732431237765, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
+        { id: "roar", name: "Roar", latitude: 34.68377598519009, longitude: -82.83715758322684, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
+        { id: "charlestonsportspub", name: "Charleston Sports Pub", latitude: 34.682784409471665, longitude: -82.83757047577707, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] }
       ]);
       setFriends([
         {
@@ -186,6 +197,21 @@ export function HomeScreen() {
                   />
                 </Marker>
               ))}
+              {checkedInFriends.map((friend) => {
+                const bar = bars.find((row) => row.id === friend.checkIn?.barId);
+                if (!bar) return null;
+                return (
+                  <Marker key={friend.userId} latitude={bar.latitude + 0.00006} longitude={bar.longitude + 0.00006}>
+                    <button
+                      className="friend-marker"
+                      title={`${friend.displayName} at ${friend.checkIn?.barName ?? ""}`}
+                      onClick={() => setSelectedFriendId(friend.userId)}
+                    >
+                      {friend.displayName.slice(0, 1).toUpperCase()}
+                    </button>
+                  </Marker>
+                );
+              })}
               {selectedBar ? (
                 <Popup
                   latitude={selectedBar.latitude}
@@ -197,6 +223,19 @@ export function HomeScreen() {
                 >
                   <div className="map-popup-title">{selectedBar.name}</div>
                   <div className="small">Friends here: {selectedBar.friendsHere?.length ?? 0}</div>
+                </Popup>
+              ) : null}
+              {selectedFriend ? (
+                <Popup
+                  latitude={(bars.find((row) => row.id === selectedFriend.checkIn?.barId)?.latitude ?? 34.6832) + 0.00006}
+                  longitude={(bars.find((row) => row.id === selectedFriend.checkIn?.barId)?.longitude ?? -82.8375) + 0.00006}
+                  closeButton={false}
+                  closeOnClick={false}
+                  anchor="top"
+                  offset={18}
+                >
+                  <div className="map-popup-title">{selectedFriend.displayName}</div>
+                  <div className="small">At {selectedFriend.checkIn?.barName ?? "Unknown"}</div>
                 </Popup>
               ) : null}
             </Map>

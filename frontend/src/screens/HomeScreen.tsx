@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Map, { Marker, Popup } from "react-map-gl/mapbox";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { connectSocket } from "../socket";
 import type { Bar, Friend } from "../types";
 
@@ -10,6 +11,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
 type LocationState = "detecting" | "enabled" | "disabled";
 
 export function HomeScreen() {
+  const auth = useAuth();
   const [bars, setBars] = useState<Bar[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [selfCheckIn, setSelfCheckIn] = useState<null | { barId: string; barName: string }>(null);
@@ -53,6 +55,7 @@ export function HomeScreen() {
   }
 
   useEffect(() => {
+    if (auth.demoMode) return;
     loadAll();
     const socket = connectSocket();
     if (!socket) return;
@@ -65,9 +68,38 @@ export function HomeScreen() {
       socket.off("checkin:update", handler);
       socket.off("friend:accepted", handler);
     };
-  }, []);
+  }, [auth.demoMode]);
 
   useEffect(() => {
+    if (auth.demoMode) {
+      setLocationState("enabled");
+      setSelfCheckIn({ barId: "studyhall", barName: "Study Hall" });
+      setBars([
+        { id: "studyhall", name: "Study Hall", latitude: 34.683367925520535, longitude: -82.83780545981314, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
+        { id: "backstreets", name: "Backstreets", latitude: 34.6836255716976, longitude: -82.83666011989295, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] },
+        { id: "roar", name: "Roar", latitude: 34.68377598519009, longitude: -82.83715758322684, tagline: "", vibeTags: [], musicStyle: "", lineLevel: "", bestNights: "", friendsHere: [] }
+      ]);
+      setFriends([
+        {
+          userId: "demo-friend-1",
+          username: "john",
+          displayName: "John",
+          avatar: "star",
+          premium: false,
+          checkIn: { barId: "roar", barName: "Roar", updatedAt: new Date().toISOString() }
+        },
+        {
+          userId: "demo-friend-2",
+          username: "emma",
+          displayName: "Emma",
+          avatar: "music",
+          premium: true,
+          checkIn: null
+        }
+      ]);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setLocationState("disabled");
       return;
@@ -103,7 +135,7 @@ export function HomeScreen() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [auth.demoMode]);
 
   const locationSubtext =
     locationState === "detecting"

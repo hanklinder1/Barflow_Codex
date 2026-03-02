@@ -28,7 +28,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   if (auth.loading) return <div className="center-card">Loading...</div>;
-  if (!auth.userId) return <Navigate to="/auth" replace />;
+  if (!auth.userId && !auth.demoMode) return <Navigate to="/auth" replace />;
   if (auth.needsOnboarding) return <Navigate to="/onboarding" replace />;
   return <Shell>{children}</Shell>;
 }
@@ -40,11 +40,11 @@ export default function App() {
     <Routes>
       <Route
         path="/auth"
-        element={auth.userId ? <Navigate to={auth.needsOnboarding ? "/onboarding" : "/"} replace /> : <AuthScreen />}
+        element={auth.userId || auth.demoMode ? <Navigate to={auth.needsOnboarding ? "/onboarding" : "/"} replace /> : <AuthScreen />}
       />
       <Route
         path="/onboarding"
-        element={auth.userId ? <OnboardingScreen /> : <Navigate to="/auth" replace />}
+        element={auth.userId && !auth.demoMode ? <OnboardingScreen /> : <Navigate to="/auth" replace />}
       />
       <Route
         path="/"
@@ -87,7 +87,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to={auth.userId ? "/" : "/auth"} replace />} />
+      <Route path="*" element={<Navigate to={auth.userId || auth.demoMode ? "/" : "/auth"} replace />} />
     </Routes>
   );
 }

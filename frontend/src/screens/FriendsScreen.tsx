@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { connectSocket } from "../socket";
 import type { Friend, Message, Nudge, Profile } from "../types";
 
@@ -25,6 +26,7 @@ type Conversation = {
 type Tab = "friends" | "search" | "requests";
 
 export function FriendsScreen() {
+  const auth = useAuth();
   const navigate = useNavigate();
   const { friendId } = useParams();
 
@@ -58,6 +60,89 @@ export function FriendsScreen() {
     }
     return groups;
   }, [friends]);
+
+  if (auth.demoMode) {
+    const demoFriends: Friend[] = [
+      {
+        userId: "demo-friend-1",
+        username: "john",
+        displayName: "John",
+        avatar: "star",
+        premium: false,
+        checkIn: { barId: "roar", barName: "Roar", updatedAt: new Date().toISOString() }
+      },
+      {
+        userId: "demo-friend-2",
+        username: "maria",
+        displayName: "Maria",
+        avatar: "music",
+        premium: true,
+        checkIn: null
+      }
+    ];
+
+    return (
+      <div className="stack">
+        <section className="panel stack">
+          <h1 className="title">Friends</h1>
+          <p className="small">Demo mode preview: real-time features are simulated.</p>
+          <div className="notice-pill">John is requesting your presence at Roar</div>
+        </section>
+
+        <div className="split-panels">
+          <section className="panel stack">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <h2 className="section-title">Friends</h2>
+              <button className="secondary">Group by Bar</button>
+            </div>
+            {demoFriends.map((friend) => (
+              <div key={friend.userId} className="list-item">
+                <div>
+                  <strong>{friend.displayName}</strong>
+                  <div className="small">@{friend.username}</div>
+                  <div className="small">{friend.checkIn ? `At ${friend.checkIn.barName}` : "Not out"}</div>
+                </div>
+                <div className="row wrap">
+                  <button className="secondary">Message</button>
+                  <button className="nudge-btn">Nudge</button>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section className="panel stack">
+            <h2 className="section-title">Messages</h2>
+            <div className="convo-item active">
+              <div>
+                <strong>John</strong>
+                <div className="small">@john</div>
+                <div className="small">Meet us at Roar?</div>
+              </div>
+              <span className="badge">1</span>
+            </div>
+            <div className="message-thread">
+              <div className="message-bubble">
+                <div>I am at Roar right now. Come through.</div>
+                <div className="small">10:32 PM</div>
+              </div>
+              <div className="message-bubble">
+                <div>On my way.</div>
+                <div className="small">10:34 PM</div>
+              </div>
+            </div>
+            <div className="row">
+              <input placeholder="Type message" value="Demo mode disabled for send" readOnly style={{ flex: 1 }} />
+              <button disabled>Send</button>
+            </div>
+          </section>
+        </div>
+
+        <Link to="/settings" className="small">
+          Open settings
+        </Link>
+      </div>
+    );
+  }
 
   async function load() {
     const [friendData, requestData, convoData] = await Promise.all([

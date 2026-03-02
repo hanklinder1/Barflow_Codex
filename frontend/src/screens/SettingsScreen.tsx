@@ -62,10 +62,11 @@ export function SettingsScreen() {
   }, []);
 
   useEffect(() => {
+    if (auth.demoMode) return;
     api<{ plans: Plan[] }>("/billing/plans")
       .then((data) => setPlanRows(data.plans))
       .catch(() => undefined);
-  }, []);
+  }, [auth.demoMode]);
 
   const selectedAvatar = useMemo(
     () => avatarOptions.find((option) => option.value === avatar) ?? avatarOptions[0],
@@ -80,6 +81,11 @@ export function SettingsScreen() {
     e.preventDefault();
     setError(null);
     setSaved(false);
+
+    if (auth.demoMode) {
+      setSaved(true);
+      return;
+    }
 
     try {
       const updated = await api<any>("/profiles/me", "PATCH", { displayName, avatar });
@@ -96,6 +102,11 @@ export function SettingsScreen() {
   }
 
   async function onUpgradeClick() {
+    if (auth.demoMode) {
+      setBillingNotice("Demo mode: checkout flow is preview-only.");
+      return;
+    }
+
     try {
       const checkout = await api<{ sessionId: string }>("/billing/checkout-session", "POST", { planId: "PREMIUM" });
       setBillingNotice(`Premium checkout session ready (${checkout.sessionId}). Payment integration comes next.`);

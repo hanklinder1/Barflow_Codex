@@ -47,6 +47,9 @@ export function AuthScreen() {
         <button className="secondary" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
           {mode === "signin" ? "Need an account? Sign up" : "Have an account? Sign in"}
         </button>
+        <button className="secondary" onClick={auth.enterDemoMode}>
+          Explore Demo Mode
+        </button>
       </div>
     </div>
   );

@@ -3,14 +3,18 @@ import { disconnectSocket } from "./socket";
 import { me, setToken, signIn, signUp } from "./api";
 import type { Profile } from "./types";
 
+const DEMO_STORAGE_KEY = "barflow_demo_mode";
+
 type AuthState = {
   loading: boolean;
   userId: string | null;
   profile: Profile | null;
   needsOnboarding: boolean;
+  demoMode: boolean;
   login: (email: string, password: string, mode: "signin" | "signup") => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => void;
+  enterDemoMode: () => void;
   setProfile: (profile: Profile) => void;
 };
 
@@ -21,8 +25,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [demoMode, setDemoMode] = useState(localStorage.getItem(DEMO_STORAGE_KEY) === "true");
 
   async function refresh() {
+    if (demoMode) {
+      setUserId("demo-user");
+      setProfile({
+        userId: "demo-user",
+        username: "demo",
+        displayName: "Demo User",
+        avatar: "star",
+        premium: false
+      });
+      setNeedsOnboarding(false);
+      setLoading(false);
+      return;
+    }
+
     try {
       const current = await me();
       setUserId(current.userId);
@@ -41,17 +60,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [demoMode]);
 
   async function login(email: string, password: string, mode: "signin" | "signup") {
+    if (demoMode) {
+      setDemoMode(false);
+      localStorage.removeItem(DEMO_STORAGE_KEY);
+    }
     const data = mode === "signin" ? await signIn(email, password) : await signUp(email, password);
     setToken(data.token);
     await refresh();
   }
 
+  function enterDemoMode() {
+    setToken(null);
+    disconnectSocket();
+    setDemoMode(true);
+    localStorage.setItem(DEMO_STORAGE_KEY, "true");
+    setNeedsOnboarding(false);
+  }
+
   function logout() {
     setToken(null);
     disconnectSocket();
+    localStorage.removeItem(DEMO_STORAGE_KEY);
+    setDemoMode(false);
     setUserId(null);
     setProfile(null);
     setNeedsOnboarding(false);
@@ -63,12 +96,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userId,
       profile,
       needsOnboarding,
+      demoMode,
       login,
       refresh,
       logout,
+      enterDemoMode,
       setProfile
     }),
-    [loading, userId, profile, needsOnboarding]
+    [loading, userId, profile, needsOnboarding, demoMode]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -137,7 +137,7 @@ export function HomeScreen() {
                 longitude: -82.8375,
                 zoom: 16.25
               }}
-              mapStyle="mapbox://styles/mapbox/navigation-day-v1"
+              mapStyle="mapbox://styles/mapbox/light-v11"
               style={{ width: "100%", height: "100%" }}
             >
               {bars.map((bar) => (
